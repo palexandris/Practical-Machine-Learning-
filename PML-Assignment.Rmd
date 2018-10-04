@@ -1,0 +1,153 @@
+---
+title: "PML-Assignment"
+author: "Panagiotis Alexandris"
+date: "4 October 2018"
+output: html_document
+---
+
+
+## Overview
+
+The following report contains a  describtion of how we built our model, how we used cross validation, what the sample error is, and why we made the choices you did. We also used our prediction model to predict 20 different test cases.
+
+## The Problem
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+The training data for this project are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment.
+
+## The model
+
+Our outcome varibale is **classe**, with the following levels:
+
+* A - exactly according to the specification
+* B - throwing the elbows to the front
+* C - lifting the dumbbell only halfway
+* D - lowering the dumbbell only halfway
+* E - throwing the hips to the front
+
+The rest of the variables will be used as predictors.
+
+## Cross Validation
+
+We will subset our training set into a **subTraining set (70%)** and a **sunTesting set (30%)**
+
+##Getting and Cleaning of Data
+
+First we install/load the packages:
+
+```{r}
+library(caret)
+library(rpart) 
+library(rpart.plot)
+library(rattle)
+library(randomForest) 
+library(repmis)
+```
+Now we download the data
+```{r}
+train<- read.csv('pml-training.csv', na.strings = c("NA", "#DIV/0!", ""))
+test<- read.csv('pml-testing.csv', na.strings = c("NA", "#DIV/0!", ""))
+```
+Next we set the seed to enable reproducibility and then subset our Training set, as explained above.
+
+```{r}
+
+set.seed(1)#this will enable reproducibility
+inTrain <- createDataPartition(train$classe, p = 0.7, list = FALSE)
+subTraining <- train[inTrain,]
+subTesting <- train[-inTrain,]
+
+dim(subTraining)[1]/dim(train)[1] #we can see that this is 70% of the original training set
+
+
+```
+Now we need to clean our data.
+
+```{r}
+subTraining <- subTraining[, -c(1:7)] #removal of the first 7 columns as they are metadata and not relevant for the prediction
+
+#we remove variables with over 40% NAs
+subTraining_clean <- subTraining
+for (i in 1:length(subTraining)){
+  if(sum(is.na(subTraining[, i]))/ nrow(subTraining) >= .4) {
+    for (j in 1:length(subTraining_clean)){
+      if(length(grep(names(subTraining[i]), names(subTraining_clean)[j])) == 1){
+        subTraining_clean <- subTraining_clean[, -j]
+      }
+    }
+  }
+}
+
+subTraining <- subTraining_clean
+
+#Applying same transformations to testing and subtesting datasets
+
+index1 <- colnames(subTraining)
+subTesting <- subTesting[index1]
+
+
+index2 <- colnames(subTraining[, -53]) #removal of 'classe'
+test <- test[index2]
+
+```
+
+##Model with Desicion Tree
+
+```{r}
+modFit_dt <- rpart(classe ~., data = subTraining, method = "class")
+
+prp(modFit_dt, box.palette =  list("orange", "red", "white", "light blue", "green"),main = "Final Decision Tree")
+
+##calculate predicted values
+pred_dt <- predict(modFit_dt, subTesting, type = "class")
+
+
+##calculate the confusion matrix
+cm_dt <- confusionMatrix(pred_dt, subTesting$classe)
+print(cm_dt)
+```
+
+The accuracy of the model is 74%. Hence, the expected out of sample error is 26%.
+
+Let's see if we can do better, using the **random forrest method**
+
+##Random Forrest Method
+
+```{r}
+
+#random forests method
+
+##create the model with randomForest function
+modFit_rf <- randomForest(classe ~., data = subTraining)
+
+plot(modFit_rf, main="Random Forrest")
+
+##calculate predicted values 
+pred_rf <- predict(modFit_rf, subTesting)
+
+##calculate confusion matrix
+cm_rf <- confusionMatrix(pred_rf, subTesting$classe)
+print(cm_rf)
+
+```
+Now we have 99.69 accuracy, which means just 0.31% expected out of sample error! It's obviously the preferable method.
+
+##Our Prediction
+
+```{r}
+our_prediction <- predict(modFit_rf, test, type = "class")
+print(our_prediction)
+```
+
+##Final thoughts
+
+We chose between two typical machine learning models and ended up with the **random forrest** model, due to its higher accuracy. The predictions are the ones seen above.
